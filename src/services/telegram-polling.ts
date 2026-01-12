@@ -296,11 +296,27 @@ function escapeHtml(s: string) {
     .replace(/>/g, '&gt;');
 }
 
+// ========== Delete existing webhook ==========
+async function deleteWebhook(botToken: string) {
+  try {
+    await telegramApi(botToken, 'deleteWebhook', { drop_pending_updates: false });
+    logger.info('Telegram webhook deleted successfully');
+  } catch (e) {
+    logger.error('Failed to delete Telegram webhook:', e);
+  }
+}
+
 // ========== Start/Stop Polling ==========
-export function startTelegramPolling() {
+export async function startTelegramPolling() {
   if (pollInterval) return;
 
   logger.info('Starting Telegram polling...');
+
+  // First, delete any existing webhook so polling can work
+  const settings = await getSettings();
+  if (settings?.telegramBotToken) {
+    await deleteWebhook(settings.telegramBotToken);
+  }
 
   // Poll every 3 seconds
   pollInterval = setInterval(() => {

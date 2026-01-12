@@ -192,8 +192,10 @@ app.listen(PORT, () => {
   // Start background jobs
   startBackgroundJobs();
 
-  // Start Telegram polling for deposit approvals
-  startTelegramPolling();
+  // Start Telegram polling for deposit approvals (async - deletes webhook first)
+  startTelegramPolling().catch((e) => {
+    logger.error('Failed to start Telegram polling:', e);
+  });
 });
 
 // Graceful shutdown
