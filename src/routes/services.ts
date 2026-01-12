@@ -228,31 +228,34 @@ router.get('/search', async (req, res, next) => {
       pageSize = '50'
     } = req.query;
 
-    const where: any = { isActive: true };
+    // Build where conditions properly using AND array
+    const conditions: any[] = [{ isActive: true }];
 
     if (platform && platform !== 'all') {
-      where.OR = [
-        { platform: platform as string },
-        { platforms: { has: platform as string } },
-      ];
+      conditions.push({
+        OR: [
+          { platform: platform as string },
+          { platforms: { has: platform as string } },
+        ],
+      });
     }
 
     if (subCategory) {
-      where.subCategory = subCategory;
+      conditions.push({ subCategory: subCategory as string });
     }
 
     if (search) {
       const searchStr = search as string;
-      where.AND = [
-        {
-          OR: [
-            { name: { contains: searchStr, mode: 'insensitive' } },
-            { title: { contains: searchStr, mode: 'insensitive' } },
-            { category: { contains: searchStr, mode: 'insensitive' } },
-          ],
-        },
-      ];
+      conditions.push({
+        OR: [
+          { name: { contains: searchStr, mode: 'insensitive' } },
+          { title: { contains: searchStr, mode: 'insensitive' } },
+          { category: { contains: searchStr, mode: 'insensitive' } },
+        ],
+      });
     }
+
+    const where = { AND: conditions };
 
     const [services, total] = await Promise.all([
       prisma.service.findMany({
