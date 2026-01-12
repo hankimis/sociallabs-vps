@@ -1,0 +1,340 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  password      String
+  role          String    @default("USER") // USER, ADMIN, AGENT
+  balance       Float     @default(0.0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  referralCode  String?   @unique
+  referredBy    String?
+
+  orders        Order[]
+  transactions  Transaction[]
+  depositRequests DepositRequest[] @relation("DepositRequestsByUser")
+  approvedDepositRequests DepositRequest[] @relation("DepositRequestsApprovedBy")
+  tickets       Ticket[]
+  ticketMessages TicketMessage[]
+
+  agentProfile  AgentProfile?
+  agentApplicationsRequested AgentApplication[] @relation("AgentApplicationUser")
+  agentApplicationsProcessed AgentApplication[] @relation("AgentApplicationProcessedBy")
+  agentNotesWritten AgentUserNote[] @relation("AgentNotesByAgent")
+  agentNotesAbout AgentUserNote[] @relation("AgentNotesAboutUser")
+
+  agentSettlements AgentSettlement[]
+
+  reviews       Review[]
+}
+
+model Service {
+  id              Int     @id @default(autoincrement())
+  providerKey     String  @default("SMMKINGS") // panel identifier (e.g., SMMKINGS, JAP)
+  providerId      Int
+  name            String
+  title           String? // 운영용 커스텀 제목(표시는 title 우선, 없으면 name)
+  type            String
+  category        String  // Original Category from Provider
+  rate            Float   // 원가(1000개 기준, KRW)
+  rateUsdPer1000  Float?  // 원가(1000개 기준, USD 원본)
+  price           Float
+  min             Int
+  max             Int
+  isRefill        Boolean @default(false)
+  isCancel        Boolean @default(false)
+  isActive        Boolean @default(true)
+  
+  // New fields for UI Grouping
+  platform        String? // Step 1: Instagram, YouTube, etc.
+  platforms       String[] @default([]) // Step 1 multi-select (canonical); keep `platform` for backwards compatibility/search
+  subCategory     String? // Step 2: Korean/Foreigner, Likes/Followers
+  description     String? // Step 4: Service Description
+
+  // Order input customization (service-specific)
+  // Example: 언론홍보 -> label: "전화번호", type: "tel"
+  orderInputLabel       String? // label shown in order form (defaults to "링크 입력")
+  orderInputType        String? // url | tel | text (defaults to "url")
+  orderInputPlaceholder String?
+  orderInputHelpText    String?
+
+  // Event product constraints
+  isEvent             Boolean @default(false)
+  eventNewUserDays    Int?    // if set, only users created within N days can use (and only once)
+  eventFixedQuantity  Int?    // if set, quantity must equal this value
+  eventMaxPerUser     Int     @default(1) // currently only 1 is supported (enforced via Order unique)
+
+  orders          Order[]
+  
+  @@unique([providerKey, providerId])
+  @@index([isActive, subCategory])
+  @@index([isActive, platform])
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  userId          String
+  serviceId       Int
+  providerOrderId Int?
+  link            String
+  quantity        Int
+  charge          Float
+  startCount      Int?
+  remains         Int?
+  status          String      @default("PENDING") // PENDING, PROCESSING, COMPLETED, PARTIAL, CANCELED, FAIL
+  
+  agentCodeApplied String?
+  agentCommission  Float?
+
+  // Event order de-duplication: set when placing event order.
+  // Unique index allows multiple NULLs for non-event orders.
+  eventKey        String?
+  // Event target de-duplication (e.g., instagram id). Unique globally for event orders.
+  eventTargetKey  String?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User        @relation(fields: [userId], references: [id])
+  service         Service     @relation(fields: [serviceId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@unique([userId, eventKey])
+  @@unique([eventTargetKey])
+
+  review Review?
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  amount      Float
+  type        String   // DEPOSIT, ORDER, REFUND, COMMISSION
+  description String?
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([userId, type, createdAt])
+}
+
+model Ticket {
+  id        String   @id @default(cuid())
+  userId    String
+  subject   String
+  category  String   @default("GENERAL") // ORDER, DEPOSIT, ACCOUNT, GENERAL
+  subCategory String? // optional fine-grained grouping
+  relatedOrderId String? // optional: internal Order.id for faster investigation
+  status    String   @default("OPEN") // OPEN, ANSWERED, CLOSED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+  messages  TicketMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([updatedAt])
+}
+
+model TicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  userId    String?
+  isAdmin   Boolean  @default(false)
+  message   String
+  createdAt DateTime @default(now())
+
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([ticketId])
+  @@index([createdAt])
+}
+
+model DepositRequest {
+  id            String   @id @default(cuid())
+  userId        String
+  amount        Float
+  depositorName String
+  memo          String?
+  status        String   @default("PENDING") // PENDING, APPROVED, REJECTED
+
+  createdAt     DateTime @default(now())
+  processedAt   DateTime?
+  processedById String?
+  adminNote     String?
+
+  user          User     @relation("DepositRequestsByUser", fields: [userId], references: [id])
+  processedBy   User?    @relation("DepositRequestsApprovedBy", fields: [processedById], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AppSetting {
+  id                  Int      @id @default(1)
+  telegramEnabled     Boolean  @default(false)
+  telegramBotToken    String?
+  telegramChatId      String?
+  telegramWebhookSecret String?
+  usdToKrwRate        Float?   // USD -> KRW 환율 (운영자가 설정)
+  platformConfig      Json?    // 플랫폼/세부유형/순서 설정 (관리자 설정)
+  promoConfig         Json?    // 메인 프로모션 팝업 설정 (관리자 설정)
+  updatedAt           DateTime @updatedAt
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  orderId   String   @unique
+  rating    Int      @default(5) // 1~5
+  content   String
+  isHidden  Boolean  @default(false) // admin can hide instead of delete if needed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+  order     Order    @relation(fields: [orderId], references: [id])
+
+  @@index([createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([isHidden, createdAt(sort: Desc)])
+}
+
+model AgentProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  commissionRate Float    @default(5.0) // percent (0~100)
+  status         String   @default("ACTIVE") // ACTIVE, SUSPENDED
+
+  // Payout info (for settlements)
+  payoutName          String?
+  payoutPhone         String?
+  payoutBankName      String?
+  payoutBankAccount   String?
+  payoutAccountHolder String?
+  payoutMemo          String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user           User     @relation(fields: [userId], references: [id])
+
+  @@index([status])
+}
+
+model AgentApplication {
+  id            String   @id @default(cuid())
+  userId        String
+  status        String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  requestedRate Float?   // optional
+  message       String?
+
+  // Personal / payout info (required for settlement)
+  applicantName       String?
+  phone              String?
+  payoutBankName      String?
+  payoutBankAccount   String?
+  payoutAccountHolder String?
+  payoutMemo          String?
+  consentPersonalInfo Boolean @default(false)
+  consentAt           DateTime?
+
+  processedAt   DateTime?
+  processedById String?
+  adminNote     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation("AgentApplicationUser", fields: [userId], references: [id])
+  processedBy   User?    @relation("AgentApplicationProcessedBy", fields: [processedById], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AgentSettlement {
+  id                String   @id @default(cuid())
+  agentId           String
+  weekStart         DateTime
+  weekEnd           DateTime
+  totalCommission   Float    @default(0.0)
+  directCommission  Float    @default(0.0)
+  overrideCommission Float   @default(0.0)
+  // Settlement request flow (agent -> admin)
+  requestStatus     String   @default("NONE") // NONE, PENDING, APPROVED, REJECTED, PAID
+  requestedAt       DateTime?
+  requestAmount     Float    @default(0.0) // 신청 금액(보류/차감)
+  requestMemo       String?
+  reviewedAt        DateTime?
+  reviewedById      String?
+  isSettled         Boolean  @default(false) // 정산 확정
+  settledAt         DateTime?
+  isPaid            Boolean  @default(false) // 입금 완료
+  paidAt            DateTime?
+  memo              String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  agent             User     @relation(fields: [agentId], references: [id])
+
+  @@unique([agentId, weekStart])
+  @@index([weekStart])
+  @@index([isSettled])
+  @@index([isPaid])
+  @@index([requestStatus])
+  @@index([requestedAt])
+}
+
+model AgentUserNote {
+  id        String   @id @default(cuid())
+  agentId   String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agent     User     @relation("AgentNotesByAgent", fields: [agentId], references: [id])
+  user      User     @relation("AgentNotesAboutUser", fields: [userId], references: [id])
+
+  @@index([agentId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model AdminLog {
+  id          String   @id @default(cuid())
+  adminId     String
+  action      String   // 액션 타입 (DEPOSIT_APPROVE, DEPOSIT_REJECT, ORDER_REFUND, AGENT_UPDATE, etc.)
+  targetType  String?  // 대상 타입 (User, Order, DepositRequest, AgentProfile, etc.)
+  targetId    String?  // 대상 ID
+  details     Json?    // 상세 정보 (변경 전/후 값 등)
+  ipAddress   String?  // IP 주소
+  userAgent   String?  // User Agent
+  createdAt   DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
