@@ -1,3 +1,7 @@
+시작방법
+.\server.ps1 install   # 설치
+.\server.ps1 start     # 시작
+
 # Sociallabs VPS Backend
 
 Express.js API server for Sociallabs SMM Panel.
@@ -165,3 +169,4 @@ Logs are stored in the `logs/` directory:
 - `error.log` - Error logs only
 - `out.log` - Standard output
 - `combined.log` - All logs
+# sociallabs-vps
