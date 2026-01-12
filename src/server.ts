@@ -152,8 +152,8 @@ app.get('/api/vps/jobs/history', (req, res) => {
   res.json({ history });
 });
 
-// Trigger order sync manually
-app.post('/api/vps/jobs/order-sync', authMiddleware, async (req, res) => {
+// Trigger order sync manually (인증은 Next.js 프록시에서 처리)
+app.post('/api/vps/jobs/order-sync', async (req, res) => {
   try {
     // Run in background
     triggerOrderSync();
