@@ -4,6 +4,7 @@ import { AuthRequest, adminMiddleware } from '../middleware/auth';
 import { AppError } from '../middleware/error-handler';
 import { logger } from '../utils/logger';
 import { syncServicesFromProvider } from '../services/smm-api';
+import { invalidateCache as invalidateServicesCache } from './services';
 
 const router = Router();
 
@@ -87,7 +88,7 @@ router.get('/orders', async (req: AuthRequest, res, next) => {
 // Refund order
 router.post('/orders/:id/refund', async (req: AuthRequest, res, next) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { reason } = req.body;
 
     const order = await prisma.order.findUnique({
@@ -163,7 +164,8 @@ router.get('/deposit-requests', async (req: AuthRequest, res, next) => {
 // Approve/Reject deposit request
 router.post('/deposit-requests/:id/:action', async (req: AuthRequest, res, next) => {
   try {
-    const { id, action } = req.params;
+    const id = req.params.id as string;
+    const action = req.params.action as string;
     const { adminNote } = req.body;
 
     if (!['approve', 'reject'].includes(action)) {
@@ -190,7 +192,7 @@ router.post('/deposit-requests/:id/:action', async (req: AuthRequest, res, next)
             status: 'APPROVED',
             processedAt: new Date(),
             processedById: req.user!.id,
-            adminNote,
+            adminNote: adminNote as string | undefined,
           },
         }),
         prisma.user.update({
@@ -213,7 +215,7 @@ router.post('/deposit-requests/:id/:action', async (req: AuthRequest, res, next)
           status: 'REJECTED',
           processedAt: new Date(),
           processedById: req.user!.id,
-          adminNote,
+          adminNote: adminNote as string | undefined,
         },
       });
     }
@@ -268,11 +270,15 @@ router.post('/sync-services', async (req: AuthRequest, res, next) => {
 
     const result = await syncServicesFromProvider(providerKey);
 
+    // Invalidate services cache after sync
+    invalidateServicesCache();
+
     logger.info(`Services synced: ${providerKey}`, result);
 
     res.json({
       success: true,
       message: `Synced ${result.created} new, updated ${result.updated} services`,
+      cacheInvalidated: true,
       ...result,
     });
   } catch (error) {
