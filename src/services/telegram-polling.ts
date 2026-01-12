@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { logger } from '../utils/logger';
+import { escapeHtml } from '../utils/helpers';
 
 // ========== Telegram Polling Service ==========
 // Instead of webhooks, VPS polls Telegram for updates
@@ -287,13 +288,6 @@ export async function sendDepositNotification(deposit: {
   } catch (e) {
     logger.error('Failed to send Telegram deposit notification:', e);
   }
-}
-
-function escapeHtml(s: string) {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
 }
 
 // ========== Delete existing webhook ==========
