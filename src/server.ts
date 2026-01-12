@@ -5,6 +5,7 @@ import { rateLimit } from 'express-rate-limit';
 import { logger } from './utils/logger';
 import { errorHandler } from './middleware/error-handler';
 import { authMiddleware } from './middleware/auth';
+import prisma from './utils/prisma';
 
 // Routes
 import authRoutes from './routes/auth';
@@ -16,12 +17,13 @@ import agentRoutes from './routes/agent';
 import webhookRoutes from './routes/webhooks';
 
 // Background Jobs
-import { startBackgroundJobs } from './services/background-jobs';
+import { startBackgroundJobs, getJobStats, getJobHistory, triggerOrderSync } from './services/background-jobs';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const startTime = new Date();
 
 // Trust proxy (for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
@@ -48,16 +50,20 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Request logging
+// Request logging (skip health check to reduce noise)
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.path}`, {
-    ip: req.ip,
-    userAgent: req.get('User-Agent'),
-  });
+  if (!req.path.startsWith('/health') && !req.path.startsWith('/api/vps/status')) {
+    logger.info(`${req.method} ${req.path}`, {
+      ip: req.ip,
+      userAgent: req.get('User-Agent'),
+    });
+  }
   next();
 });
 
-// Health check
+// ========== Health & Status Endpoints ==========
+
+// Basic health check (for load balancers)
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -66,7 +72,98 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes
+// Detailed VPS status (for admin dashboard)
+app.get('/api/vps/status', async (req, res) => {
+  try {
+    // Check database connection
+    let dbStatus = 'ok';
+    let dbLatency = 0;
+    try {
+      const dbStart = Date.now();
+      await prisma.$queryRaw`SELECT 1`;
+      dbLatency = Date.now() - dbStart;
+    } catch {
+      dbStatus = 'error';
+    }
+
+    // Get memory usage
+    const memUsage = process.memoryUsage();
+
+    // Get job stats
+    const jobs = getJobStats();
+
+    res.json({
+      status: 'online',
+      version: '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+      startedAt: startTime.toISOString(),
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      database: {
+        status: dbStatus,
+        latencyMs: dbLatency,
+      },
+      memory: {
+        heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+        heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+        rss: Math.round(memUsage.rss / 1024 / 1024),
+        external: Math.round(memUsage.external / 1024 / 1024),
+      },
+      jobs: {
+        orderSync: {
+          status: jobs.orderSync.status,
+          lastRun: jobs.orderSync.lastRun,
+          lastDuration: jobs.orderSync.lastDuration,
+          lastResult: jobs.orderSync.lastResult,
+          totalRuns: jobs.orderSync.totalRuns,
+          totalErrors: jobs.orderSync.totalErrors,
+        },
+        serviceSync: {
+          status: jobs.serviceSync.status,
+          lastRun: jobs.serviceSync.lastRun,
+          lastDuration: jobs.serviceSync.lastDuration,
+          lastResult: jobs.serviceSync.lastResult,
+          totalRuns: jobs.serviceSync.totalRuns,
+          totalErrors: jobs.serviceSync.totalErrors,
+        },
+        logCleanup: {
+          status: jobs.logCleanup.status,
+          lastRun: jobs.logCleanup.lastRun,
+          lastResult: jobs.logCleanup.lastResult,
+          totalRuns: jobs.logCleanup.totalRuns,
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// Job history
+app.get('/api/vps/jobs/history', (req, res) => {
+  const limit = Number(req.query.limit) || 20;
+  const history = getJobHistory().slice(0, limit);
+  res.json({ history });
+});
+
+// Trigger order sync manually
+app.post('/api/vps/jobs/order-sync', authMiddleware, async (req, res) => {
+  try {
+    // Run in background
+    triggerOrderSync();
+    res.json({ success: true, message: 'Order sync triggered' });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// ========== API Routes ==========
 app.use('/api/auth', authRoutes);
 app.use('/api/user', authMiddleware, userRoutes);
 app.use('/api/orders', authMiddleware, orderRoutes);
