@@ -15,9 +15,11 @@ import serviceRoutes from './routes/services';
 import adminRoutes from './routes/admin';
 import agentRoutes from './routes/agent';
 import webhookRoutes from './routes/webhooks';
+import depositRoutes from './routes/deposits';
 
 // Background Jobs
 import { startBackgroundJobs, getJobStats, getJobHistory, triggerOrderSync } from './services/background-jobs';
+import { startTelegramPolling, getTelegramPollingStatus } from './services/telegram-polling';
 
 dotenv.config();
 
@@ -133,6 +135,7 @@ app.get('/api/vps/status', async (req, res) => {
           totalRuns: jobs.logCleanup.totalRuns,
         },
       },
+      telegram: getTelegramPollingStatus(),
     });
   } catch (error) {
     res.status(500).json({
@@ -171,6 +174,7 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/admin', authMiddleware, adminRoutes);
 app.use('/api/agent', authMiddleware, agentRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/deposits', depositRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -187,6 +191,9 @@ app.listen(PORT, () => {
 
   // Start background jobs
   startBackgroundJobs();
+
+  // Start Telegram polling for deposit approvals
+  startTelegramPolling();
 });
 
 // Graceful shutdown
