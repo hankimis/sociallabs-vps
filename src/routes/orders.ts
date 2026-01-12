@@ -172,7 +172,11 @@ router.get('/list', async (req: AuthRequest, res, next) => {
 // Cancel order
 router.post('/:id/cancel', async (req: AuthRequest, res, next) => {
   try {
+<<<<<<< HEAD
     const id = req.params.id as string;
+=======
+    const id = String(req.params.id);
+>>>>>>> 73d6501 (Fix build + improve server script)
 
     const order = await prisma.order.findUnique({
       where: { id },

@@ -88,7 +88,11 @@ router.get('/orders', async (req: AuthRequest, res, next) => {
 // Refund order
 router.post('/orders/:id/refund', async (req: AuthRequest, res, next) => {
   try {
+<<<<<<< HEAD
     const id = req.params.id as string;
+=======
+    const id = String(req.params.id);
+>>>>>>> 73d6501 (Fix build + improve server script)
     const { reason } = req.body;
 
     const order = await prisma.order.findUnique({
@@ -164,8 +168,13 @@ router.get('/deposit-requests', async (req: AuthRequest, res, next) => {
 // Approve/Reject deposit request
 router.post('/deposit-requests/:id/:action', async (req: AuthRequest, res, next) => {
   try {
+<<<<<<< HEAD
     const id = req.params.id as string;
     const action = req.params.action as string;
+=======
+    const id = String(req.params.id);
+    const action = String(req.params.action);
+>>>>>>> 73d6501 (Fix build + improve server script)
     const { adminNote } = req.body;
 
     if (!['approve', 'reject'].includes(action)) {

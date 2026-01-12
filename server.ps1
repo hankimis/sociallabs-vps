@@ -3,50 +3,94 @@ param(
     [string]$Action
 )
 
+$ErrorActionPreference = "Stop"
+
+function Assert-CommandExists {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Name,
+        [Parameter(Mandatory=$true)]
+        [string]$Hint
+    )
+
+    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+        Write-Host ""
+        Write-Host "ERROR: '$Name' 명령을 찾을 수 없습니다." -ForegroundColor Red
+        Write-Host $Hint -ForegroundColor Yellow
+        exit 1
+    }
+}
+
+function Invoke-CheckedCommand {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true, Position=0)]
+        [string]$Exe,
+        [Parameter(ValueFromRemainingArguments=$true)]
+        [string[]]$ArgumentList
+    )
+
+    & $Exe @ArgumentList
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "ERROR: 명령 실패: $Exe $($ArgumentList -join ' ')" -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+}
+
 switch ($Action) {
     "start" {
         Write-Host "Starting Sociallabs API Server..." -ForegroundColor Green
-        pm2 start ecosystem.config.js
-        pm2 save
-        pm2 status
+        Assert-CommandExists -Name "pm2" -Hint "해결: Node.js(npm) 설치 후 'npm i -g pm2' 실행, 또는 PATH에 pm2가 포함되었는지 확인하세요."
+        Invoke-CheckedCommand pm2 start ecosystem.config.js
+        Invoke-CheckedCommand pm2 save
+        Invoke-CheckedCommand pm2 status
     }
     "stop" {
         Write-Host "Stopping Sociallabs API Server..." -ForegroundColor Yellow
-        pm2 stop sociallabs-api
+        Assert-CommandExists -Name "pm2" -Hint "해결: Node.js(npm) 설치 후 'npm i -g pm2' 실행, 또는 PATH에 pm2가 포함되었는지 확인하세요."
+        Invoke-CheckedCommand pm2 stop sociallabs-api
     }
     "restart" {
         Write-Host "Restarting Sociallabs API Server..." -ForegroundColor Cyan
-        pm2 restart sociallabs-api
-        pm2 status
+        Assert-CommandExists -Name "pm2" -Hint "해결: Node.js(npm) 설치 후 'npm i -g pm2' 실행, 또는 PATH에 pm2가 포함되었는지 확인하세요."
+        Invoke-CheckedCommand pm2 restart sociallabs-api
+        Invoke-CheckedCommand pm2 status
     }
     "status" {
-        pm2 status
-        pm2 info sociallabs-api
+        Assert-CommandExists -Name "pm2" -Hint "해결: Node.js(npm) 설치 후 'npm i -g pm2' 실행, 또는 PATH에 pm2가 포함되었는지 확인하세요."
+        Invoke-CheckedCommand pm2 status
+        Invoke-CheckedCommand pm2 info sociallabs-api
     }
     "logs" {
-        pm2 logs sociallabs-api
+        Assert-CommandExists -Name "pm2" -Hint "해결: Node.js(npm) 설치 후 'npm i -g pm2' 실행, 또는 PATH에 pm2가 포함되었는지 확인하세요."
+        Invoke-CheckedCommand pm2 logs sociallabs-api
     }
     "build" {
         Write-Host "Building production version..." -ForegroundColor Blue
-        npm run build
+        Assert-CommandExists -Name "npm" -Hint "해결: Node.js를 설치하고, 새 터미널을 열어 'node -v' / 'npm -v'가 동작하는지 확인하세요."
+        Invoke-CheckedCommand npm run build
         Write-Host "Build complete!" -ForegroundColor Green
         Write-Host "Run '.\server.ps1 restart' to apply changes"
     }
     "deploy" {
         Write-Host "Full deployment: build + restart..." -ForegroundColor Magenta
-        npm run build
-        pm2 restart sociallabs-api
-        pm2 save
+        Assert-CommandExists -Name "npm" -Hint "해결: Node.js를 설치하고, 새 터미널을 열어 'node -v' / 'npm -v'가 동작하는지 확인하세요."
+        Assert-CommandExists -Name "pm2" -Hint "해결: Node.js(npm) 설치 후 'npm i -g pm2' 실행, 또는 PATH에 pm2가 포함되었는지 확인하세요."
+        Invoke-CheckedCommand npm run build
+        Invoke-CheckedCommand pm2 restart sociallabs-api
+        Invoke-CheckedCommand pm2 save
         Write-Host "Deployment complete!" -ForegroundColor Green
-        pm2 status
+        Invoke-CheckedCommand pm2 status
     }
     "install" {
         Write-Host "Installing dependencies..." -ForegroundColor Blue
-        npm install
+        Assert-CommandExists -Name "npm" -Hint "해결: Node.js를 설치하고, 새 터미널을 열어 'node -v' / 'npm -v'가 동작하는지 확인하세요."
+        Invoke-CheckedCommand npm install
         Write-Host "Generating Prisma client..." -ForegroundColor Blue
-        npm run prisma:generate
+        Invoke-CheckedCommand npm run prisma:generate
         Write-Host "Building..." -ForegroundColor Blue
-        npm run build
+        Invoke-CheckedCommand npm run build
         Write-Host "Installation complete!" -ForegroundColor Green
     }
     default {
