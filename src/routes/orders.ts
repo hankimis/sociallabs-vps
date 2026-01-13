@@ -43,9 +43,8 @@ router.post('/', async (req: AuthRequest, res, next) => {
       throw new AppError(404, 'User not found');
     }
 
-    // Calculate charge
-    const pricePerUnit = service.price / 1000;
-    const charge = Math.ceil(quantity * pricePerUnit);
+    // Calculate charge (price is already per-unit)
+    const charge = Math.ceil(quantity * service.price);
 
     // Check balance
     if (user.balance < charge) {
